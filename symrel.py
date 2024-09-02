@@ -16,32 +16,75 @@ def help(name):
     print("    GET SELF|<relation><ees|ers>")
     print("    WHICH <relation> <to|from> <symbol>")
     print("Available relations:", list(available_relations.keys()))
+    print("\nBoolean operations AND/OR/NOT are supported. See examples below.")
+    print("For a strict definition of the syntax, please refer to the repo README.")
     print("\nExamples:")
     print("Print all symbols from the relation data:")
     print("    symrel.py FROM ALL GET SELF")
-    print("Get all callers of symX which also calls symY:")
+    print("Get all callers of symX which also call symY:")
     print("    echo symX | symrel.py GET callers WHICH call to symY")
+    print("\nExamples with boolean operations:")
+    print("Get all callers of symX which do not call symY:")
+    print("    symrel.py FROM ALL WHICH call to symX AND NOT call to symY")
+    print("Add to a list of symbols in sym.txt with their jumpers:")
+    print("    symrel.py FROM FILE sym.txt GET SELF OR jumpers > sym.txt")
+
+def push_bool_ops(argv, cur, bool_ops):
+    binary = False
+    if argv[cur] in ('AND', 'OR'):
+        bool_ops.append(argv[cur]); cur += 1
+        binary = True
+    if argv[cur] == 'NOT':
+        bool_ops.append(argv[cur]); cur += 1
+    return cur, binary
+
+def pop_bool_ops(argv, cur, bool_ops):
+    while len(bool_ops) > 0:
+         ops = bool_ops.pop()
+         argv.insert(cur, ops)
+
+def consume_bool_ops(input, cache, universe, bool_ops):
+    while len(bool_ops) > 0:
+        ops = bool_ops.pop()
+        if ops == 'AND':
+            cache &= input
+        elif ops == 'OR':
+            cache |= input
+        else:
+            input = universe - input
+    if cache == None:
+        cache = input
+    return cache
 
 def handle_one_command(argv, cur, in_cache):
+    cache = None
+    bool_ops = list()
     error = None
     ret = None
     target_sym = None
     recur = 1
     opt = argv[cur]; cur += 1
     while cur < len(argv):
+        cur, binary = push_bool_ops(argv, cur, bool_ops)
+        if cache != None and not binary: # end of current command
+            pop_bool_ops(argv, cur, bool_ops)
+            break
         if argv[cur] == 'RECUR':
             recur = int(argv[cur+1]); cur +=2
         relation = None
         if opt == 'GET': # handle GET commands
+            universe = set(sr.dict.keys())
             if argv[cur] == 'SELF':
                 ret = in_cache; cur += 1
-                break
+                cache = consume_bool_ops(ret, cache, universe, bool_ops)
+                continue
             else:
                 for rel in available_relations.keys():
                     if argv[cur].startswith(rel):
                         relation = rel
                         break
                 if relation == None: # end of current command
+                    pop_bool_ops(argv, cur, bool_ops)
                     break
                 if argv[cur].endswith(('ees', 'ers')):
                     forward = argv[cur].endswith('ees'); cur += 1
@@ -49,9 +92,11 @@ def handle_one_command(argv, cur, in_cache):
                     error = "GET with invalid argument: " + argv[cur]
                     break
         else: # handle WHICH commands
+            universe = in_cache
             if argv[cur] in available_relations.keys():
                 relation = argv[cur]; cur += 1
             else: # end of current command
+                pop_bool_ops(argv, cur, bool_ops)
                 break
             if argv[cur] in ('to', 'from'):
                 forward = (argv[cur] == 'to'); cur += 1
@@ -63,15 +108,21 @@ def handle_one_command(argv, cur, in_cache):
                 break
             target_sym = argv[cur]; cur += 1
         ret = sr.search(in_cache, relation, forward, target_sym, recur)
-        break
-    return ret, cur, error
+        cache = consume_bool_ops(ret, cache, universe, bool_ops)
+        continue
+    return cache, cur, error
 
-# cur points at "FROM"
-def handle_one_statement(argv, cur, in_cache, out_cache):
+def handle_statement(argv, cur, in_cache, out_cache):
+    cache = None
+    bool_ops = list()
     error = None
     has_from = False
     ret = None
     while not error and cur < len(argv):
+        cur, binary = push_bool_ops(argv, cur, bool_ops)
+        if cache != None and not binary: # end of current statement
+            pop_bool_ops(argv, cur, bool_ops)
+            break
         if argv[cur] == 'FROM':
             in_cache = None
             has_from = True
@@ -106,8 +157,10 @@ def handle_one_statement(argv, cur, in_cache, out_cache):
             ret, cur, error = handle_one_command(argv, cur, in_cache)
         else:
             error = "unknown command: " + argv[cur]
-        break
-    return ret, cur, error
+        if not error:
+            cache = consume_bool_ops(ret, cache, set(sr.dict.keys()), bool_ops)
+        continue
+    return cache, cur, error
 
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
@@ -130,7 +183,7 @@ if __name__ == "__main__":
     in_cache = None
     out_cache = None
     while not error and cur < len(argv):
-        out_cache, cur, error = handle_one_statement(argv, cur, in_cache, out_cache)
+        out_cache, cur, error = handle_statement(argv, cur, in_cache, out_cache)
     if error:
         print("argument", cur, "error:", error, file=sys.stderr)
         help(argv[0]); exit(1)
