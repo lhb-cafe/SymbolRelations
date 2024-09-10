@@ -1,6 +1,7 @@
 import sys
 import re
 import pickle
+from symrel_tracer import TraceNode, RelationTraces
 
 available_relations = {
     'call': re.compile(r'^[0-9a-f]+:\s*e8\s[ 0-9a-f]{11}\s*(call)\s+[0-9a-f]+ <(.+?)>'),
@@ -29,7 +30,9 @@ class SymbolRelations:
     def __init__(self):
         self.dict = {}
         self.instructions = list()
-        self.abi_version = "v0.1"
+        self.tracing = False
+        self.search_history = []
+        self.abi_version = "v0.2"
 
     def get(self, sym):
         if sym not in self.dict:
@@ -42,33 +45,67 @@ class SymbolRelations:
         self.get(src).add_relation(dst, rel, True, self.instructions.index(inst))
         self.get(dst).add_relation(src, rel, False, self.instructions.index(inst))
 
+    def register_search(self, relation, forward, target_sym, recur):
+        ret = len(self.instructions) # re-use the instructions list
+        if forward:
+            history = relation + ' to'
+        else:
+            history = relation + ' from'
+        if target_sym:
+            history = ' '.join([history, target_sym])
+        if recur != 1:
+            history = ' '.join([history, 'recur', recur])
+        self.instructions.append(history)
+        return ret
+
     def __find_peers_recur(self, found, src_sym, relation, forward, search, recur):
-        for sym in self.get(src_sym).peers(relation, forward):
+        recur_list = []
+        for sym, inst_index_list in self.get(src_sym).peers(relation, forward).items():
             if recur < 0: recur = -1 # negative recur means unlimited recursion
             elif recur == 0: break
+            if found.add_step(sym, src_sym, tuple(inst_index_list), forward):
+                recur_list.append(sym)
+            else:
+                continue
             # if search is unset: Find all peers related recursively
-            # if search is set:   Return immediately when it's hit
-            if sym == search: # hit our target. Done
-                found.clear
-                found.add(sym)
+            # if search is set:   Return immediately when it's hit, unless tracing is True,
+            #                     in which case the search continues to find all traces
+            if sym == search and not self.tracing: # hit our target. Done
+                found.commit()
                 return
-            if sym not in found: # needed to avoid infinite recursion
-                found.add(sym)
+        # BFS
+        if len(recur_list) > 0:
+            found.commit()
+            for sym in recur_list:
                 self.__find_peers_recur(found, sym, relation, forward, search, recur - 1)
+        else:
+            # nothing added for this symbol, return before we hit an infinite loop
+            return
 
     # if target_sym: filter the input list for peers with target_sym
     # else: find all related peers
     def search(self, in_cache, relation, forward, target_sym, recur):
-        results = set()
+        assert isinstance(in_cache, RelationTraces)
+        results = in_cache.copy_traces()
         for sym in in_cache:
-            found = set()
+            found = self.build_cache({sym}, trace_only = True)
             self.__find_peers_recur(found, sym, relation, forward, target_sym, recur)
             if target_sym != None:
                 if target_sym in found:
-                    results.add(sym)
+                    if self.tracing:
+                        # we only need the trace to target_sym
+                        found.trim_traces({target_sym})
+                        search_idx = self.register_search(relation, forward, target_sym, recur)
+                        results.add_step(sym, sym, (search_idx,), filter_trace = found.roots[sym])
+                    else:
+                        results.cache.add(sym)
             else:
-                results.update(found);
+                results.add_traces(found)
+        results.commit()
         return results
+
+    def set_tracing(self, tracing):
+        self.tracing = tracing
 
     # sym_file should be in objdump format
     def build(self, sym_file):
@@ -98,6 +135,9 @@ class SymbolRelations:
                     print("Error matching relation", relation, "[None] ->", dst_sym, "without a matching caller", file=sys.stderr);
                     exit(1)
 
+    def build_cache(self, symbols = None, trace_only = False):
+        return RelationTraces(self, symbols, trace_only, tracing = self.tracing)
+
     def save(self, sr_file):
         with open(sr_file, 'wb') as file:
             pickle.dump(self, file)
@@ -107,4 +147,4 @@ class SymbolRelations:
         with open(sr_file, 'rb') as file:
             sr = pickle.load(file)
         assert sr.abi_version == self.abi_version
-        self.dict = sr.dict
+        self.__dict__.update(sr.__dict__)
