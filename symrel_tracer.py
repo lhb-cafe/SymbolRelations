@@ -176,10 +176,8 @@ class RelationTraces():
             return self
 
         # remove unselected nodes from self.leaves
-        for nodes in self.leaves.values():
-            for i in range(0, len(nodes)):
-                if not nodes[i].selected:
-                    nodes.pop(i)
+        for sym, nodes in self.leaves.items():
+            self.leaves[sym] = [node for node in nodes if node.selected]
         # mark staged leaves as selected and merge leaves
         for sym, nodes in self.staged_leaves.items():
             for node in nodes: node.selected = True
