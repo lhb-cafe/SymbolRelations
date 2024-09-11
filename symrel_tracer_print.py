@@ -5,6 +5,15 @@ import sys, os
 def supports_color():
     return sys.stdout.isatty() and os.getenv('TERM') in ['xterm', 'xterm-256color', 'screen', 'screen-256color']
 
+def compute_leaves(self):
+    if hasattr(self, 'leaves_cnt'):
+        return self.leaves_cnt
+    else:
+        self.leaves_cnt = 1
+        for leaf in self.leaves.values():
+            self.leaves_cnt += compute_leaves(leaf)
+        return self.leaves_cnt
+
 def str_helper(self, color):
     selected_color = '\033[92m' # green
     reset_color = '\033[0m'
@@ -45,8 +54,8 @@ def str_helper(self, color):
         lines.append(first)
         lines.append(second)
 
-    keys = sorted(self.leaves.keys())
-    leaf_lines = self.leaves[keys[0]].str_helper(color)
+    leaves = sorted(list(self.leaves.values()))
+    leaf_lines = leaves[0].str_helper(color)
     lines[1] += leaf_lines[1]
     lines[2] += leaf_lines[2]
     paddings0 = ''.join([c*(len(first) - 1) for c in ' ']) + '│'
@@ -55,12 +64,11 @@ def str_helper(self, color):
     paddings3 = ''.join([c*len(first) for c in ' '])
 
     for line in leaf_lines[3:]:
-        if len(keys) > 1:
+        if len(leaves) > 1:
             lines.append(paddings0 + line)
         else:
             lines.append(paddings3 + line)
-    for key in keys[1:len(keys)-1]:
-        leaf = self.leaves[key]
+    for leaf in leaves[1:len(leaves)-1]:
         cnt = 0
         for line in leaf.str_helper(color):
             if cnt == 2:
@@ -68,9 +76,9 @@ def str_helper(self, color):
             else:
                 lines.append(paddings0 + line)
             cnt += 1
-    if len(keys) > 1:
+    if len(leaves) > 1:
         cnt = 0
-        for line in self.leaves[keys[-1]].str_helper(color):
+        for line in leaves[-1].str_helper(color):
             if cnt < 2:
                 lines.append(paddings0 + line)
             elif cnt == 2:
@@ -82,7 +90,11 @@ def str_helper(self, color):
     return lines
 
 def __repr__(self):
+    compute_leaves(self)
     return '\n' + '\n'.join(self.str_helper(supports_color())) + '\n'
+
+def node_compare(self, other):
+    return self.leaves_cnt > other.leaves_cnt
 
 @verify_ret_with(verify_node)
 def invert_node(self):
@@ -110,6 +122,7 @@ def invert_node(self):
 TraceNode.str_helper = str_helper
 TraceNode.__repr__ = __repr__
 TraceNode.invert = invert_node
+TraceNode.__lt__ = node_compare
 
 # take a list of leaves with the same symbol and build a reverse TraceNode
 @verify_ret_with(verify_node)

@@ -62,14 +62,6 @@ class TraceNode:
             for node in self.leaves.values():
                 node.get_leaves(leaves)
 
-    # this works for siblings only, which are guaranteed to have different (symbol, forward) pairs
-    def __lt__(self, other):
-        if self.symbol != other.symbol:
-            return self.symbol < other.symbol
-        else:
-            assert self.forward != other.forward
-            return self.forward < other.forward
-
     @verify_ret_with(verify_node)
     def __deepcopy__(self, memo):
         ret = type(self)(self.symbol, self.insts, self.forward, self.selected, parent = self.parent, sr = self.sr)
