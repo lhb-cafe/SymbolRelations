@@ -35,7 +35,7 @@ class TraceNode:
     # add trace from other to self
     # self uses reference directly from other without copying
     @verify_self_with(verify_node)
-    def join(self, other, new_leaves = None, self_leaves = None, other_leaves = None):
+    def join(self, other):
         assert self.symbol == other.symbol
         # joining filter info
         if other.filtered:
@@ -47,21 +47,11 @@ class TraceNode:
         # joining insts tuple
         if other.insts and self.insts != other.insts:
             self.insts = tuple(sorted(set(self.insts + other.insts)))
-        # if other is in other_leaves but self is not in self_leaves. Put self in new_leave
-        if new_leaves != None and other_leaves and other.symbol in other_leaves:
-            if other in other_leaves[other.symbol]:
-                if self.symbol not in self_leaves or self not in self_leaves[self.symbol]:
-                    if self.symbol in new_leaves:
-                        new_leaves[self.symbol].append(self)
-                    else:
-                        new_leaves[self.symbol] = [self]
 
         for o_tuple, o_node in other.leaves.items():
             if o_tuple in self.leaves:
-                s_node = self.leaves[o_tuple].join(o_node, new_leaves)
+                s_node = self.leaves[o_tuple].join(o_node)
             else:
-                if new_leaves != None:
-                    o_node.get_leaves(new_leaves)
                 self.add_leaf(o_node)
 
     def get_leaves(self, leaves):
@@ -73,6 +63,7 @@ class TraceNode:
         else:
             for node in self.leaves.values():
                 node.get_leaves(leaves)
+
 
     @verify_ret_with(verify_node)
     def __deepcopy__(self, memo):
@@ -132,8 +123,11 @@ class RelationTraces():
 
         filter_trace.prepare_filter_trace()
         for src_node in self.leaves[sym]:
-            src_node.filtered = True
-            src_node.filter_trace = filter_trace
+            if src_node.filtered:
+                src_node.filter_trace.join(filter_trace)
+            else:
+                src_node.filtered = True
+                src_node.filter_trace = filter_trace
 
     # return True if an actual update got staged
     def add_step(self, dst_sym, src_sym, inst_tuple, forward):
@@ -168,6 +162,7 @@ class RelationTraces():
             return self
 
         # append other's roots to self's leaves
+        new_leaves = dict()
         for sym, o_node in other.roots.items():
             for s_node in self.leaves[sym]:
                 # s_node and o_node has the same symbol
@@ -176,7 +171,6 @@ class RelationTraces():
         RelationTraces.merge_leaves(self.staged_leaves, other.leaves)
         return self
 
-    @verify_self_with(verify_traces)
     def commit(self):
         # merge cache
         self.cache |= self.staged_cache
@@ -197,6 +191,16 @@ class RelationTraces():
         if not self.tracing:
             return
 
+        # we might have added dangling leaves that cannot trace back to our roots
+        # remove them first
+        for sym, nodes in self.leaves.items():
+            for i in range(len(nodes) - 1, -1, -1):
+                node = nodes[i]
+                while node.parent:
+                    node = node.parent
+                if not node is self.roots[node.symbol]:
+                    del nodes[i]
+
         # trim from leaves
         for garbage in set(self.leaves.keys()) - self.cache:
             nodes = self.leaves.pop(garbage)
@@ -210,7 +214,6 @@ class RelationTraces():
                     node = node.parent
                 if node.parent == None:
                     # node is in self.roots. Release it
-                    assert node is self.roots[node.symbol]
                     del self.roots[node.symbol]
                 else:
                     # release from parent

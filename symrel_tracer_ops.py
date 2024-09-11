@@ -18,14 +18,12 @@ def __set_iop__(self, other, iop):
         return self
     assert other.tracing
 
-    new_leaves = dict()
     # joining the roots
     for sym, root in other.roots.items():
         if sym not in self.roots:
             self.roots[sym] = root
-            root.get_leaves(new_leaves)
         else:
-            self.roots[sym].join(root, new_leaves = new_leaves, self_leaves = self.leaves, other_leaves = other.leaves)
+            self.roots[sym].join(root)
 
     # content of other becomes irrelevant in our use cases so don't bother copying it
     # this will raise a failure in verify_traces if other ever got used again
@@ -33,7 +31,7 @@ def __set_iop__(self, other, iop):
     other.roots['intended_failure'] = TraceNode()
 
     # merging the new_leaves
-    RelationTraces.merge_leaves(self.leaves, new_leaves)
+    RelationTraces.merge_leaves(self.leaves, other.leaves)
 
     self.trim_traces()
     return self

@@ -86,6 +86,7 @@ class SymbolRelations:
                     else:
                         results.cache.add(sym)
             else:
+                found.trim_traces()
                 results.add_traces(found)
         results.commit()
         return results
