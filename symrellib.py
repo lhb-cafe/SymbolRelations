@@ -45,19 +45,6 @@ class SymbolRelations:
         self.get(src).add_relation(dst, rel, True, self.instructions.index(inst))
         self.get(dst).add_relation(src, rel, False, self.instructions.index(inst))
 
-    def register_search(self, relation, forward, target_sym, recur):
-        ret = len(self.instructions) # re-use the instructions list
-        if forward:
-            history = relation + ' to'
-        else:
-            history = relation + ' from'
-        if target_sym:
-            history = ' '.join([history, target_sym])
-        if recur != 1:
-            history = ' '.join([history, 'recur', recur])
-        self.instructions.append(history)
-        return ret
-
     def __find_peers_recur(self, found, src_sym, relation, forward, search, recur):
         recur_list = []
         for sym, inst_index_list in self.get(src_sym).peers(relation, forward).items():
@@ -95,8 +82,7 @@ class SymbolRelations:
                     if self.tracing:
                         # we only need the trace to target_sym
                         found.trim_traces({target_sym})
-                        search_idx = self.register_search(relation, forward, target_sym, recur)
-                        results.add_step(sym, sym, (search_idx,), filter_trace = found.roots[sym])
+                        results.add_filter(sym, found.roots[sym])
                     else:
                         results.cache.add(sym)
             else:

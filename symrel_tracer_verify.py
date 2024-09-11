@@ -37,7 +37,7 @@ def verify_node(self):
         if not hasattr(self, 'filter_trace'):
             print("filter_trace is missing for a filtered node:\n", self)
             return False
-    elif self.parent:
+    if self.parent:
         if self.insts == None or self.forward == None:
             print("Missing insts or forward\n")
             return False
@@ -79,10 +79,10 @@ def verify_traces(self):
             if len(node.leaves) > 0:
                 found = False
                 for leaf in node.leaves.values():
-                    if leaf in self.leaves[leaf.symbol]:
+                    if leaf.symbol in self.leaves and leaf in self.leaves[leaf.symbol]:
                         found = True
                 if not found:
-                    print(f'bad leaf (has leaf not in self.leaves) with {sym}:\n{node}')
+                    print(f'bad leaf (all leaves not in self.leaves) with {sym}:\n{node}')
                     success = False
 
             if node in seen:
@@ -97,6 +97,8 @@ def verify_traces(self):
             # check all root traced back from self.leaves lives in self.roots
             if not success:
                 print(f'from root:\n{node}')
+                print(f'from traces:\n')
+                self.print()
                 return False
             if not node.symbol in self.roots or not node is self.roots[node.symbol]:
                 print(f'bad leaf (cannot trace back to roots) with {sym}:\n{node}')

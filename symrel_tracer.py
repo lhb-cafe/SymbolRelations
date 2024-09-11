@@ -3,17 +3,21 @@ from symrel_tracer_verify import verify_self_with, verify_ret_with, verify_node,
 
 class TraceNode:
     @verify_self_with(verify_node)
-    def __init__(self, symbol = None, insts = None, forward = None, selected = False, leaves = [], parent = None, sr = None):
+    def __init__(self, symbol = None, insts = None, forward = None, leaves = [], parent = None, sr = None):
         self.sr = sr
         self.symbol = symbol
         self.insts = insts
         self.forward = forward
         self.parent = parent
         self.leaves = dict()
-        self.selected = selected
         self.filtered = False
         for node in leaves:
             self.add_leaf(node)
+
+    def prepare_filter_trace(self):
+        self.is_filter_trace = True
+        for leaf in self.leaves.values():
+            leaf.prepare_filter_trace()
 
     # return a dictionary mappeing symbols to references of last touched leaves
     @verify_self_with(verify_node)
@@ -33,12 +37,12 @@ class TraceNode:
     @verify_self_with(verify_node)
     def join(self, other, leaves = None):
         assert self.symbol == other.symbol
-        self.selected |= other.selected
         # joining filter info
         if other.filtered:
             if self.filtered:
                 self.filter_trace.join(other.filter_trace)
             else:
+                self.filtered = True
                 self.filter_trace = other.filter_trace
         # joining insts tuple
         if other.insts and self.insts != other.insts:
@@ -64,10 +68,10 @@ class TraceNode:
 
     @verify_ret_with(verify_node)
     def __deepcopy__(self, memo):
-        ret = type(self)(self.symbol, self.insts, self.forward, self.selected, parent = self.parent, sr = self.sr)
+        ret = type(self)(self.symbol, self.insts, self.forward, parent = self.parent, sr = self.sr)
         ret.filtered = self.filtered
         if self.filtered:
-            ret.filter_trace = self.filter_trace.__deepcopy__(memo)
+            ret.filter_trace = self.filter_trace # filter_trace won't change, so don't need copying
         memo[id(self)] = ret
 
         for tuple, node in self.leaves.items():
@@ -99,7 +103,7 @@ class RelationTraces():
         # initialize the input symbols as trace roots (and leaf at the same time)
         if symbols:
             for sym in symbols:
-                node = TraceNode(sym, selected = True, sr = self.sr)
+                node = TraceNode(sym, sr = self.sr)
                 self.roots[sym] = node
                 self.leaves[sym] = [node]
 
@@ -111,8 +115,20 @@ class RelationTraces():
             else:
                 s_leaves[sym] = nodes
 
+    def add_filter(self, sym, filter_trace):
+        updated = False
+        if sym not in self.cache and sym not in self.staged_cache:
+            self.staged_cache.add(sym)
+        if not self.tracing:
+            return updated
+
+        filter_trace.prepare_filter_trace()
+        for src_node in self.leaves[sym]:
+            src_node.filtered = True
+            src_node.filter_trace = filter_trace
+
     # return True if an actual update got staged
-    def add_step(self, dst_sym, src_sym, inst_tuple = None, forward = None, filter_trace = None):
+    def add_step(self, dst_sym, src_sym, inst_tuple, forward):
         updated = False
         if dst_sym not in self.cache and dst_sym not in self.staged_cache:
             self.staged_cache.add(dst_sym)
@@ -132,14 +148,7 @@ class RelationTraces():
 
         # create the new node and handle tracing
         new = TraceNode(dst_sym, inst_tuple, forward, sr = self.sr)
-        if filter_trace:
-            assert dst_sym == src_sym
-            new.filtered = True
-            new.filter_trace = filter_trace
         for src_node in self.leaves[src_sym]:
-            if new.filtered:
-                # dst_sym is the same as src_sym, unselect the duplicated src node
-                src_node.selected = False
             RelationTraces.merge_leaves(self.staged_leaves, src_node.add_leaf(copy.copy(new)))
         return True
 
@@ -167,12 +176,6 @@ class RelationTraces():
         if not self.tracing:
             return self
 
-        # remove unselected nodes from self.leaves
-        for sym, nodes in self.leaves.items():
-            self.leaves[sym] = [node for node in nodes if node.selected]
-        # mark staged leaves as selected and merge leaves
-        for sym, nodes in self.staged_leaves.items():
-            for node in nodes: node.selected = True
         RelationTraces.merge_leaves(self.leaves, self.staged_leaves)
         self.staged_leaves = dict()
         self.trim_traces()
@@ -192,11 +195,10 @@ class RelationTraces():
             while len(nodes) > 0:
                 node = nodes.pop()
                 if len(node.leaves) > 0:
-                    # don't remove if not actual leaf, simply unselect it
-                    node.selected = False
+                    # not an actual leaf, do nothing
                     continue
-                # trace backward until we hit a branch or an end
-                while node.parent and len(node.parent.leaves) == 1:
+                # trace backward until we hit a branch or an end (root or something in cache)
+                while node.parent and len(node.parent.leaves) == 1 and node.parent.symbol not in self.cache:
                     node = node.parent
                 if node.parent == None:
                     # node is in self.roots. Release it
