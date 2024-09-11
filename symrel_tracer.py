@@ -35,7 +35,7 @@ class TraceNode:
     # add trace from other to self
     # self uses reference directly from other without copying
     @verify_self_with(verify_node)
-    def join(self, other, leaves = None):
+    def join(self, other, new_leaves = None, self_leaves = None, other_leaves = None):
         assert self.symbol == other.symbol
         # joining filter info
         if other.filtered:
@@ -47,13 +47,21 @@ class TraceNode:
         # joining insts tuple
         if other.insts and self.insts != other.insts:
             self.insts = tuple(sorted(set(self.insts + other.insts)))
+        # if other is in other_leaves but self is not in self_leaves. Put self in new_leave
+        if new_leaves != None and other_leaves and other.symbol in other_leaves:
+            if other in other_leaves[other.symbol]:
+                if self.symbol not in self_leaves or self not in self_leaves[self.symbol]:
+                    if self.symbol in new_leaves:
+                        new_leaves[self.symbol].append(self)
+                    else:
+                        new_leaves[self.symbol] = [self]
 
         for o_tuple, o_node in other.leaves.items():
             if o_tuple in self.leaves:
-                s_node = self.leaves[o_tuple].join(o_node, leaves)
+                s_node = self.leaves[o_tuple].join(o_node, new_leaves)
             else:
-                if leaves != None:
-                    o_node.get_leaves(leaves)
+                if new_leaves != None:
+                    o_node.get_leaves(new_leaves)
                 self.add_leaf(o_node)
 
     def get_leaves(self, leaves):
