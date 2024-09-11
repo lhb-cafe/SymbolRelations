@@ -164,7 +164,6 @@ def handle_statement(argv, cur, in_cache, out_cache):
         continue
     return cache, cur, error
 
-tracing = False
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
     sr = SymbolRelations()
@@ -181,11 +180,11 @@ if __name__ == "__main__":
         print("Done."); exit(0)
     elif argv[cur] in ('-h','--help'):
         help(argv[0]); exit(0)
-    elif argv[cur] in ('-v','--verbose'):
-        tracing = True; cur += 1
 
     sr.load(sr_file)
-    sr.set_tracing(tracing)
+    if argv[cur] in ('-v','--verbose'):
+        sr.set_tracing(True); cur += 1
+
     in_cache = None
     out_cache = None
     while not error and cur < len(argv):
@@ -194,9 +193,4 @@ if __name__ == "__main__":
         print("argument", cur, "error:", error, file=sys.stderr)
         help(argv[0]); exit(1)
     elif out_cache:
-        if tracing:
-            for sym in out_cache.roots:
-                print(out_cache.roots[sym])
-        else:
-            for sym in sorted(out_cache):
-                print(sym)
+        out_cache.print(backward = False)
