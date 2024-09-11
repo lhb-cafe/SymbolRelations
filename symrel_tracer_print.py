@@ -1,15 +1,26 @@
 from symrel_tracer import TraceNode, RelationTraces
 from symrel_tracer_verify import verify_ret_with, verify_node
+import sys, os
 
-def str_helper(self):
+def supports_color():
+    return sys.stdout.isatty() and os.getenv('TERM') in ['xterm', 'xterm-256color', 'screen', 'screen-256color']
+
+def str_helper(self, color):
+    selected_color = '\033[92m' # green
+    reset_color = '\033[0m'
+
     sym_str = '[' + self.symbol + ']'
+    sym_str_len = len(sym_str)
     if self.selected:
-        sym_str = f'[{sym_str}]'
+        if color:
+            sym_str = f'{selected_color}{sym_str}{reset_color}'
+        else:
+            sym_str = f'[{sym_str}]'
+            sym_str_len += 2
     if self.filtered:
         sym_str = f'[{sym_str}]'
-    first = ''.join([c*len(sym_str) for c in ' '])
+    first = ''.join([c*sym_str_len for c in ' '])
     second = sym_str
-    # assert len(first) == len(second)
 
     if self.parent:
         step_info = ' or '.join([self.sr.instructions[idx] for idx in self.insts])
@@ -20,7 +31,6 @@ def str_helper(self):
         else: step = '<─' + step
         first = ' ' + step_info + first + '  '
         second = step + ' ' + second
-        # assert len(first) == len(second)
 
     if len(self.leaves) == 0:
         return ['', first, second]
@@ -34,10 +44,9 @@ def str_helper(self):
         lines.append('')
         lines.append(first)
         lines.append(second)
-        assert len(lines[1]) == len(lines[2])
 
     keys = sorted(self.leaves.keys())
-    leaf_lines = self.leaves[keys[0]].str_helper()
+    leaf_lines = self.leaves[keys[0]].str_helper(color)
     lines[1] += leaf_lines[1]
     lines[2] += leaf_lines[2]
     paddings0 = ''.join([c*(len(first) - 1) for c in ' ']) + '│'
@@ -53,7 +62,7 @@ def str_helper(self):
     for key in keys[1:len(keys)-1]:
         leaf = self.leaves[key]
         cnt = 0
-        for line in leaf.str_helper():
+        for line in leaf.str_helper(color):
             if cnt == 2:
                 lines.append(paddings1 + line)
             else:
@@ -61,7 +70,7 @@ def str_helper(self):
             cnt += 1
     if len(keys) > 1:
         cnt = 0
-        for line in self.leaves[keys[-1]].str_helper():
+        for line in self.leaves[keys[-1]].str_helper(color):
             if cnt < 2:
                 lines.append(paddings0 + line)
             elif cnt == 2:
@@ -73,7 +82,7 @@ def str_helper(self):
     return lines
 
 def __repr__(self):
-    return '\n' + '\n'.join(self.str_helper()) + '\n'
+    return '\n' + '\n'.join(self.str_helper(supports_color())) + '\n'
 
 @verify_ret_with(verify_node)
 def invert_node(self):
