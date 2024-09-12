@@ -164,6 +164,7 @@ def handle_statement(argv, cur, in_cache, out_cache):
         continue
     return cache, cur, error
 
+backward_tracing = False
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
     sr = SymbolRelations()
@@ -182,8 +183,10 @@ if __name__ == "__main__":
         help(argv[0]); exit(0)
 
     sr.load(sr_file)
-    if argv[cur] in ('-v','--verbose'):
+    if argv[cur] in ('-t','--trace'):
         sr.set_tracing(True); cur += 1
+        if argv[cur] == 'BACKWARD':
+            backward_tracing = True; cur += 1
 
     in_cache = None
     out_cache = None
@@ -193,4 +196,4 @@ if __name__ == "__main__":
         print("argument", cur, "error:", error, file=sys.stderr)
         help(argv[0]); exit(1)
     elif out_cache:
-        out_cache.print(backward = False)
+        out_cache.print(backward = backward_tracing)
