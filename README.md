@@ -20,8 +20,11 @@ Available <command> options:
 Available relations: ['call', 'jump']
 ```
 
-## Examples
-Build the relation graph of the Linux Kernel symbols:
+## Example 1: check if a rwsem is always released by the same function which acquired it
+This is an assumption useful for investigating lock contention/leaking/deadlock issues in the Linux kernel, but there is nothing in the rwsem mechanism that enforces it. We want to find out if this assumption is true and if there are any violators, we want to know who they are.
+(Strictly speaking, this does not 100% guarantee the functions who calls up_read will always call down_read, but good enough for a proof of concept)
+
+Build the relation graph of the kernel symbols:
 ```
 # objdump -d vmlinux > kernel_disassembly.txt
 # ./symrel.py -b kernel_disassembly.txt 
@@ -88,6 +91,49 @@ What about the other 4 symbols `c_start`, `m_start`, `s_start`,  and `sysvipc_pr
 [sysvipc_proc_stop] ─────> [up_read]
 ```
 
+## Example 2: finding the readers who own a rwsem in vmcore
+
+rwsem does not store information for reader-owners (at least not all of them). To find a reader-pwner from vmcore can be tricky. Normally the first approach would be to search all processes' stack frames to detect who may be referring to the rwsem. This is based on an assumption that a rwsem owner holds the rwsem address in its stack frame, which, again, may not be true.
+
+In this example we provide another approach using this tool.
+
+We have a stalled environment due to heavy lock contention. The rwsem under contention is hold by a reader. Load is > 10000 and we want to find who the current reader-owners are.
+First, get all unique functions from all backtraces and save to a file named "all_funcs.txt". These are the kernel functions the vmcore's stack frames recorded:
+```
+crash> foreach bt | grep "#[0-9]" | awk '{print $3}' | sort | uniq > all_funcs.txt
+
+```
+
+Second, list all symbols from the SymbolRelation graph. The output is already sorted. Some symbols from the vmcore may not exist in the vmlinux image (separate kernel modules, etc), which we used to build the graph:
+
+```
+# ./symrel.py FROM ALL GET SELF > symrel_funcs.txt
+# wc -l symrel_funcs.txt
+30731 symrel_funcs.txt
+```
+
+Define a new `stackjump` relation to relate symbols to what it can recursively jump to. These are functions that may "share" the same stack frame with the starting symbol (very roughly):
+
+```
+# ./symrel.py -d stackjump GET RECUR -1 jumpees
+```
+
+Next, we define a new `stackcall` relation based on `stackjump`. This relates a symbol to what the next symbol can be in its next stack frame:
+
+```
+# ./symrel.py -d stackcall GET SELF,stackjumpees GET callees GET SELF,stackjumpees
+```
+
+These are the functions from vmcore which `stackcall` to `up_read`. 
+
+```
+# comm -12 all_funcs.txt symrel_funcs.txt | ./symrel.py WHICH stackcall to up_read
+__access_remote_vm
+__do_page_fault
+proc_pid_cmdline_read
+task_numa_work
+```
+The next step will be to find the processes with these 4 functions in their backtrace, and not in the rwsem's wait_list, hopefully that will contain the reader-owners of the rwsem.
 
 ## Grammar
 Except for the special options `-b` and `-h`, the top level of the script parameter is a `<statement>`, which can be expressed by a context free grammar.

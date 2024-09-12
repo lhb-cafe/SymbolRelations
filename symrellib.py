@@ -69,6 +69,10 @@ class SymbolRelations:
             self.get(dst).add_relation(src, new_rel, False, index)
 
     def __find_peers_recur(self, found, src_sym, relation, forward, search, recur):
+        if src_sym not in self.dict:
+            print(f'hit undefined symbol [{src_sym}]')
+            return
+
         recur_list = []
         for sym, inst_index_list in self.get(src_sym).peers(relation, forward).items():
             if recur < 0: recur = -1 # negative recur means unlimited recursion
