@@ -51,6 +51,9 @@ def consume_bool_ops(input, cache, universe, bool_ops):
         elif ops == 'OR':
             cache |= input
         else:
+            if universe == None:
+                # only build all_cache when absolutely needed
+                universe = get_all_cache()
             input = universe - input
     if cache == None:
         cache = input
@@ -73,7 +76,7 @@ def handle_one_command(argv, cur, in_cache):
             recur = int(argv[cur+1]); cur +=2
         relation = None
         if opt == 'GET': # handle GET commands
-            universe = sr.build_cache(set(sr.dict.keys()))
+            universe = None
             if argv[cur] == 'SELF':
                 ret = in_cache; cur += 1
                 cache = consume_bool_ops(ret, cache, universe, bool_ops)
@@ -159,11 +162,17 @@ def handle_statement(argv, cur, in_cache, out_cache):
         else:
             error = "unknown command: " + argv[cur]
         if not error:
-            universe = sr.build_cache(set(sr.dict.keys()))
-            cache = consume_bool_ops(ret, cache, universe, bool_ops)
+            cache = consume_bool_ops(ret, cache, None, bool_ops)
         continue
     return cache, cur, error
 
+def get_all_cache():
+    global all_cache
+    if all_cache == None:
+        all_cache = sr.build_cache(set(sr.dict.keys()))
+    return all_cache
+
+all_cache = None
 backward_tracing = False
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
