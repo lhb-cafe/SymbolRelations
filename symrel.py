@@ -73,7 +73,7 @@ def handle_one_command(argv, cur, in_cache):
             recur = int(argv[cur+1]); cur +=2
         relation = None
         if opt == 'GET': # handle GET commands
-            universe = set(sr.dict.keys())
+            universe = sr.build_cache(set(sr.dict.keys()))
             if argv[cur] == 'SELF':
                 ret = in_cache; cur += 1
                 cache = consume_bool_ops(ret, cache, universe, bool_ops)
@@ -127,7 +127,7 @@ def handle_statement(argv, cur, in_cache, out_cache):
             in_cache = None
             has_from = True
             if argv[cur + 1] == 'ALL':
-                in_cache = set(sr.dict.keys())
+                in_cache = sr.build_cache(set(sr.dict.keys()))
             else:
                 if argv[cur + 1] == 'FILE':
                     in_buf = open([cur + 2], 'r'); cur += 1
@@ -140,9 +140,10 @@ def handle_statement(argv, cur, in_cache, out_cache):
                 else:
                     in_buf = argv[cur + 1]
                 if not in_cache:
-                    in_cache = set()
+                    in_set = set()
                     for line in in_buf:
-                        in_cache.update(set(line.strip('\n\r').split(", ")))
+                        in_set.update(set(line.strip('\n\r').split(", ")))
+                    in_cache = sr.build_cache(in_set)
             cur += 2
         if in_cache == None:
             if not has_from:
@@ -158,10 +159,12 @@ def handle_statement(argv, cur, in_cache, out_cache):
         else:
             error = "unknown command: " + argv[cur]
         if not error:
-            cache = consume_bool_ops(ret, cache, set(sr.dict.keys()), bool_ops)
+            universe = sr.build_cache(set(sr.dict.keys()))
+            cache = consume_bool_ops(ret, cache, universe, bool_ops)
         continue
     return cache, cur, error
 
+backward_tracing = False
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
     sr = SymbolRelations()
@@ -180,6 +183,11 @@ if __name__ == "__main__":
         help(argv[0]); exit(0)
 
     sr.load(sr_file)
+    if argv[cur] in ('-t','--trace'):
+        sr.set_tracing(True); cur += 1
+        if argv[cur] == 'BACKWARD':
+            backward_tracing = True; cur += 1
+
     in_cache = None
     out_cache = None
     while not error and cur < len(argv):
@@ -188,5 +196,4 @@ if __name__ == "__main__":
         print("argument", cur, "error:", error, file=sys.stderr)
         help(argv[0]); exit(1)
     elif out_cache:
-        for sym in sorted(out_cache):
-            print(sym)
+        out_cache.print(backward = backward_tracing)
