@@ -59,6 +59,33 @@ def consume_bool_ops(input, cache, universe, bool_ops):
         cache = input
     return cache
 
+def translate_commas(argv, cur):
+    argv_insert = []
+    found = True
+    for i in range(cur, len(argv)):
+        arg = argv[i]
+        while len(arg) > 0:
+            if arg.startswith(','):
+                if len(argv_insert) > 1 and argv_insert[-1] == 'OR':
+                    return argv_insert, i, "misplaced comma"
+                argv_insert.append('OR')
+                arg = arg[1:]
+                continue
+
+            if len(argv_insert) > 1 and argv_insert[-1] != 'OR':
+                # return if two consecutive options aren't separeted by commas
+                return argv_insert, i, None
+
+            index = arg.find(',')
+            if index != -1:
+                argv_insert.append(arg[:index])
+                argv_insert.append('OR')
+                arg = arg[index+1:]
+            else:
+                argv_insert.append(arg)
+                break
+    return argv_insert, i, "reach end of argv"
+
 def handle_one_command(argv, cur, in_cache):
     cache = None
     bool_ops = list()
@@ -77,6 +104,14 @@ def handle_one_command(argv, cur, in_cache):
         relation = None
         if opt in ('GET', 'get'): # handle GET commands
             universe = None
+
+            # translate commas to 'OR' for GET commands
+            argv_insert, cur, error = translate_commas(argv, cur)
+            if error:
+                break
+            for arg in reversed(argv_insert):
+                argv.insert(cur, arg)
+
             if argv[cur] in ('SELF', 'self'):
                 ret = in_cache; cur += 1
                 cache = consume_bool_ops(ret, cache, universe, bool_ops)
