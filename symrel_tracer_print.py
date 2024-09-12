@@ -112,17 +112,20 @@ def invert_node(self):
     root = TraceNode(self.symbol, sr = self.sr)
     cur = root
     leaf = self
-    while leaf.parent:
+    while True:
+        if leaf.filtered:
+            cur.filtered = True
+            # this is only used for printing, don't bother copying
+            cur.filter_trace = leaf.filter_trace
+
+        if not leaf.parent:
+            break
         new_leaf = TraceNode(leaf.parent.symbol, sr = self.sr)
         new_leaf.insts = leaf.insts
         if leaf.forward != None:
             new_leaf.forward = not leaf.forward
         else:
             new_leaf.forward = None
-        if leaf.filtered:
-            cur.filtered = True
-            # this is only used for printing, don't bother copying
-            cur.filter_trace = leaf.filter_trace
 
         ref = cur.add_leaf(new_leaf)
         assert not ref[new_leaf.symbol] is new_leaf
