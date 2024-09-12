@@ -24,8 +24,7 @@ class TraceNode:
     def add_leaf(self, other):
         leaves = dict()
         if (other.symbol, other.forward) in self.leaves:
-            self.leaves[(other.symbol, other.forward)].join(other, leaves)
-            return leaves
+            self.leaves[(other.symbol, other.forward)].join(other)
         else:
             other.get_leaves(leaves)
             other.parent = self
@@ -141,7 +140,7 @@ class RelationTraces():
             return updated
         elif dst_sym in self.leaves:
             for node in self.leaves[dst_sym]:
-                if node.parent == src_sym and set(inst_tuple).issubset(set(node.inst_tuple)):
+                if node.parent.symbol == src_sym and set(inst_tuple).issubset(set(node.insts)):
                     # this step already exists, no need to add anything
                     return updated
         assert src_sym in self.leaves and len(self.leaves[src_sym]) > 0
