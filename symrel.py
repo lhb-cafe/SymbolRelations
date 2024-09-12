@@ -5,29 +5,29 @@ from symrellib import SymbolRelations, available_relations
 
 def help(name):
     print("Usage:")
-    print(name, "-b,--build: <objdump_file>")
+    print("-b,--build: <objdump_file>")
     print("    Build the relation data. Need to be run first.\n")
-    print(name, "[FROM <input>] <command> [<command> [...]]")
+    print("-t,--trace [BACKWARD]")
+    print("    Print traces from starting symbols to result symbols")
+    print("    Must be placed as the first options\n")
+    print(name, "[-t|--trace [BACKWARD]] [FROM <input>] <command> [<command> [...]]\n")
     print("Available <input> options (default 'PIPE'):")
     print("    ALL: all available symbols from relation data (built by -b)")
-    print("    FILE <file_path>: comma separated list of symbols from file")
     print("    PIPE: load symbols from stdin or '-p'")
     print("Available <command> options:")
-    print("    GET SELF|<relation><ees|ers>")
-    print("    WHICH <relation> <to|from> <symbol>")
+    print("    GET [RECUR n] <SELF|{relation}ers/ees>[,[RECUR n] <...>[...]]")
+    print("    WHICH [NOT] [RECUR n] <{relation} to|from {symbol}> [<OR|AND> [NOT] [RECUR n] <...> [...]]")
     print("Available relations:", list(available_relations.keys()))
-    print("\nBoolean operations AND/OR/NOT are supported. See examples below.")
-    print("For a strict definition of the syntax, please refer to the repo README.")
     print("\nExamples:")
-    print("Print all symbols from the relation data:")
+    print("Get all symbols from the relation data:")
     print("    symrel.py FROM ALL GET SELF")
     print("Get all callers of symX which also call symY:")
     print("    echo symX | symrel.py GET callers WHICH call to symY")
-    print("\nExamples with boolean operations:")
     print("Get all callers of symX which do not call symY:")
     print("    symrel.py FROM ALL WHICH call to symX AND NOT call to symY")
     print("Add to a list of symbols in sym.txt with their jumpers:")
-    print("    symrel.py FROM FILE sym.txt GET SELF OR jumpers > sym.txt")
+    print("    symrel.py FROM FILE sym.txt GET SELF,jumpers")
+    print("\nFor more examples or strict definitions of the syntax, please refer to the repo README.\n")
 
 def push_bool_ops(argv, cur, bool_ops):
     binary = False
@@ -84,7 +84,7 @@ def translate_commas(argv, cur):
             else:
                 argv_insert.append(arg)
                 break
-    return argv_insert, i, "reach end of argv"
+    return argv_insert, i + 1, None
 
 def handle_one_command(argv, cur, in_cache):
     cache = None
