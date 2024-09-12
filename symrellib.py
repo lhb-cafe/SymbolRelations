@@ -3,16 +3,17 @@ import re
 import pickle
 from symrel_tracer import TraceNode, RelationTraces
 
-available_relations = {
+static_relations = {
     'call': re.compile(r'^[0-9a-f]+:\s*e8\s[ 0-9a-f]{11}\s*(call)\s+[0-9a-f]+ <(.+?)>'),
     'jump': re.compile(r'^[0-9a-f]+:\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)\s+[0-9a-f]+ <([^+>]*)>')
 }
+
 
 class Relations:
     def __init__(self):
         # index 0 for incoming, 1 for outgoing
         # a peer is a dictionary whose key is the related symbol, and value is a list of unique relation instructions
-        for relation in available_relations.keys():
+        for relation in static_relations.keys():
             setattr(self, relation, (dict(), dict()))
 
     def peers(self, relation, forward):
@@ -26,12 +27,21 @@ class Relations:
         else:
             peers[other] = [inst_index]
 
+    def add_relation_batch(self, others, relation, forward, inst_index):
+        peers = self.peers(relation, forward)
+        if other in peers:
+            if inst_index not in peers[other]:
+                peers[other].append(inst_index)
+        else:
+            peers[other] = [inst_index]
+
 class SymbolRelations:
     def __init__(self):
         self.dict = {}
         self.instructions = list()
         self.tracing = False
         self.search_history = []
+        self.available_relations = static_relations
         self.abi_version = "v0.2"
 
     def get(self, sym):
@@ -44,6 +54,19 @@ class SymbolRelations:
             self.instructions.append(inst)
         self.get(src).add_relation(dst, rel, True, self.instructions.index(inst))
         self.get(dst).add_relation(src, rel, False, self.instructions.index(inst))
+
+    def declare_dynamic_rel(self, new_rel):
+        assert new_rel not in self.instructions
+        self.instructions.append(new_rel)
+        self.available_relations[new_rel] = None
+        for symrels in self.dict.values():
+            setattr(symrels, new_rel, (dict(), dict()))
+
+    def add_dynamic_rel(self, src, dst_set, new_rel):
+        index = self.instructions.index(new_rel)
+        for dst in dst_set:
+            self.get(src).add_relation(dst, new_rel, True, index)
+            self.get(dst).add_relation(src, new_rel, False, index)
 
     def __find_peers_recur(self, found, src_sym, relation, forward, search, recur):
         recur_list = []
@@ -106,7 +129,7 @@ class SymbolRelations:
                     src_sym = match.groups()[0]
                     continue
                 relation = None
-                for rel, pattern in available_relations.items():
+                for rel, pattern in self.available_relations.items():
                     match = pattern.match(line)
                     if match:
                         relation = rel

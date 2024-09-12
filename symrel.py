@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-from symrellib import SymbolRelations, available_relations
+from symrellib import SymbolRelations, static_relations
 
 def help(name):
     print("Usage:")
@@ -17,7 +17,10 @@ def help(name):
     print("Available <command> options:")
     print("    GET [RECUR n] <SELF|{relation}ers/ees>[,[RECUR n] <...>[...]]")
     print("    WHICH [NOT] [RECUR n] <{relation} to|from {symbol}> [<OR|AND> [NOT] [RECUR n] <...> [...]]")
-    print("Available relations:", list(available_relations.keys()))
+    if sr:
+        print("Available relations:", list(sr.available_relations.keys()))
+    else:
+        print("Available relations:", list(static_relations.keys()))
     print("\nExamples:")
     print("Get all symbols from the relation data:")
     print("    symrel.py FROM ALL GET SELF")
@@ -117,7 +120,7 @@ def handle_one_command(argv, cur, in_cache):
                 cache = consume_bool_ops(ret, cache, universe, bool_ops)
                 continue
             else:
-                for rel in available_relations.keys():
+                for rel in sr.available_relations.keys():
                     if argv[cur].startswith(rel):
                         relation = rel
                         break
@@ -131,7 +134,7 @@ def handle_one_command(argv, cur, in_cache):
                     break
         else: # handle WHICH commands
             universe = in_cache
-            if argv[cur] in available_relations.keys():
+            if argv[cur] in sr.available_relations.keys():
                 relation = argv[cur]; cur += 1
             else: # end of current command
                 pop_bool_ops(argv, cur, bool_ops)
@@ -209,6 +212,7 @@ def get_all_cache():
 
 all_cache = None
 backward_tracing = False
+new_rel = False
 sr_file = '__sr_data.pkl'
 if __name__ == "__main__":
     sr = SymbolRelations()
@@ -231,11 +235,33 @@ if __name__ == "__main__":
         sr.set_tracing(True); cur += 1
         if argv[cur] in ('BACKWARD', 'backward'):
             backward_tracing = True; cur += 1
+    elif argv[cur] in ('-d', '--define'):
+        new_rel = argv[cur+1]; cur += 2
+        sr.declare_dynamic_rel(new_rel)
+        pending = list(sr.dict.keys())
+        stored_argv = list(argv[cur:])
 
     in_cache = None
     out_cache = None
-    while not error and cur < len(argv):
-        out_cache, cur, error = handle_statement(argv, cur, in_cache, out_cache)
+    while not error:
+        if new_rel and len(pending) > 0:
+            cur_sym = pending.pop()
+            in_cache = sr.build_cache({cur_sym})
+        while not error and cur < len(argv):
+            out_cache, cur, error = handle_statement(argv, cur, in_cache, out_cache)
+            in_cache = None # unset in_cache so out_cache can be piped correctly
+        if error:
+            break
+        elif new_rel:
+            sr.add_dynamic_rel(cur_sym, out_cache.cache, new_rel)
+            if len(pending) == 0:
+                sr.save(sr_file)
+                exit(0)
+            argv = list(stored_argv)
+            cur = 0
+        else:
+            break
+
     if error:
         print("argument", cur, "error:", error, file=sys.stderr)
         help(argv[0]); exit(1)
