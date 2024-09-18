@@ -140,7 +140,7 @@ class RelationTraces():
             return updated
         elif dst_sym in self.leaves:
             for node in self.leaves[dst_sym]:
-                if node.parent.symbol == src_sym and set(inst_tuple).issubset(set(node.insts)):
+                if node.parent and node.parent.symbol == src_sym and set(inst_tuple).issubset(set(node.insts)):
                     # this step already exists, no need to add anything
                     return updated
         assert src_sym in self.leaves and len(self.leaves[src_sym]) > 0
