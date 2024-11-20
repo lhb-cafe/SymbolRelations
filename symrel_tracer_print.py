@@ -37,7 +37,16 @@ def str_helper(self, color):
     second = sym_str
 
     if self.parent:
-        step_info = ' or '.join([self.sr.instructions[idx] for idx in self.insts])
+        inst_str_list = []
+        for inst in self.insts:
+            if isinstance(self.sr.instructions[inst], tuple):
+                # inst is wrapped with offset info
+                real_ind = self.sr.instructions[inst][0]
+                offset = self.sr.instructions[inst][1]
+                inst_str_list.append(f'{self.sr.instructions[real_ind]} at +{offset}')
+            else:
+                inst_str_list.append(self.sr.instructions[inst])
+        step_info = ' or '.join(inst_str_list)
 
         step = ''.join([c*len(step_info) for c in '─'])
         if self.forward == None: step = '<' + step + '>'
