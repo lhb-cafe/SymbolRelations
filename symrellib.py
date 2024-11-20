@@ -4,10 +4,9 @@ import pickle
 from symrel_tracer import TraceNode, RelationTraces
 
 static_relations = {
-    'call': re.compile(r'^[0-9a-f]+:\s*e8\s[ 0-9a-f]{11}\s*(call)\s+[0-9a-f]+ <(.+?)>'),
-    'jump': re.compile(r'^[0-9a-f]+:\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)\s+[0-9a-f]+ <([^+>]*)>')
+    'call': re.compile(r'^([0-9a-f]+):\s*e8\s[ 0-9a-f]{11}\s*(call)\s+[0-9a-f]+ <(.+?)>'),
+    'jump': re.compile(r'^([0-9a-f]+):\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)\s+[0-9a-f]+ <([^+>]*)>')
 }
-
 
 class Relations:
     def __init__(self):
@@ -42,14 +41,19 @@ class SymbolRelations:
         self.tracing = False
         self.search_history = []
         self.available_relations = static_relations
-        self.abi_version = "v0.2"
+        self.abi_version = "v0.3"
 
     def get(self, sym):
         if sym not in self.dict:
             self.dict[sym] = Relations()
         return self.dict[sym]
 
-    def register_relation(self, src, dst, rel, inst):
+    def register_relation(self, src, dst, rel, inst, offset):
+        if inst not in self.instructions:
+            self.instructions.append(inst)
+        # wrap offset inside inst
+        raw_inst_ind = self.instructions.index(inst)
+        inst = (raw_inst_ind, offset)
         if inst not in self.instructions:
             self.instructions.append(inst)
         self.get(src).add_relation(dst, rel, True, self.instructions.index(inst))
@@ -125,12 +129,13 @@ class SymbolRelations:
     def build(self, sym_file):
         self.__init__()
         src_sym = None
-        func_pattern = re.compile(r'^[0-9a-f]+ <(.+?)>:')
+        func_pattern = re.compile(r'^([0-9a-f]+) <(.+?)>:')
         with open(sym_file, 'r') as file:
             for line in file:
                 match = func_pattern.match(line)
                 if match:
-                    src_sym = match.groups()[0]
+                    src_addr = match.groups()[0]
+                    src_sym = match.groups()[1]
                     continue
                 relation = None
                 for rel, pattern in self.available_relations.items():
@@ -141,10 +146,11 @@ class SymbolRelations:
                 if not relation:
                     continue
                 # a match of relation is found
-                instruction = match.groups()[0]
-                dst_sym = match.groups()[1]
+                match_addr = match.groups()[0]
+                instruction = match.groups()[1]
+                dst_sym = match.groups()[2]
                 if src_sym:
-                    self.register_relation(src_sym, dst_sym, relation, instruction)
+                    self.register_relation(src_sym, dst_sym, relation, instruction, int(match_addr, 16) - int(src_addr, 16))
                 else:
                     print("Error matching relation", relation, "[None] ->", dst_sym, "without a matching caller", file=sys.stderr);
                     exit(1)
