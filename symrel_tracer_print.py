@@ -48,10 +48,10 @@ def str_helper(self, color):
                 inst_str_list.append(self.sr.instructions[inst])
         step_info = ' or '.join(inst_str_list)
 
-        step = ''.join([c*len(step_info) for c in '─'])
+        step = ''.join([c*len(step_info) for c in '-'])
         if self.forward == None: step = '<' + step + '>'
-        elif self.forward: step += '─>'
-        else: step = '<─' + step
+        elif self.forward: step += '->'
+        else: step = '<-' + step
         first = ' ' + step_info + first + '  '
         second = step + ' ' + second
 
@@ -63,7 +63,7 @@ def str_helper(self, color):
         if len(leaves) > 1:
             second += ' ┬'
         else:
-            second += ' ─'
+            second += ' -'
         lines = []
         lines.append('')
         lines.append(first)
