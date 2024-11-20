@@ -20,9 +20,7 @@ Available <command> options:
 Available relations: ['call', 'jump']
 ```
 
-## Example 1: check if a rwsem is always released by the same function which acquired it
-This is an assumption useful for investigating lock contention/leaking/deadlock issues in the Linux kernel, but there is nothing in the rwsem mechanism that enforces it. We want to find out if this assumption is true and if there are any violators, we want to know who they are.
-(Strictly speaking, this does not 100% guarantee the functions who calls up_read will always call down_read, but good enough for a proof of concept)
+## Examples
 
 Build the relation graph of the kernel symbols:
 ```
@@ -31,67 +29,40 @@ Build the relation graph of the kernel symbols:
 Done.
 ```
 
-Count functions in the Linux kernel calling `down_read` (since a 'FROM' clause is not specified, the default 'FROM PIPE' will be used):  
+Get all callees of `down_read`
+
 ```
-# echo down_read | ./symrel.py GET callers | wc -l
-140
+# echo down_read | ./symrel.py get callees 
+__fentry__
+call_rwsem_down_read_failed
 ```
 
-Note that it is also equivalent to listing all available symbols which calls `down_read`, except 'FROM ALL' would be slower because it has to filter out a lot of irrelevant symbols from the starting set (FROM ALL):
+Get all callees of `down_read` recursively with max depth = 2 (recur 2), with tracing (-t)
+
 ```
-# ./symrel.py FROM ALL WHICH call to down_read | wc -l
-140
+# echo down_read | ./symrel.py -t get recur 2 callees 
+
+
+              call at +14                                  call at +15                          
+[down_read] ┬────────────> [call_rwsem_down_read_failed] ─────────────> [rwsem_down_read_failed]
+            │
+            │ call at +0              
+            └───────────> [__fentry__]
 ```
 
-What functions calls `down_read` without calling or jumping to `up_read`?
+Get all callers of `down_read` which does not call or jump to `up_read`:
+
 ```
-# echo down_read | ./symrel.py GET callers WHICH not call to up_read and not jump to up_read > funcs.txt
-# cat funcs.txt
+# echo down_read | ./symrel.py get callers,jumpers which not call to up_read and not jump to up_read
 c_start
 m_start
 request_trusted_key
 s_start
 sysvipc_proc_start
+trace_event_read_lock
 ```
 
-Do their callers or jumpers ever call to up_read?
-```
-# cat funcs.txt | ./symrel.py GET self,jumpers,callers WHICH call to up_read or jump to up_read
-request_master_key.isra.5
-```
-We can use the `-t` option to trace it back to the starting symbol `request_trusted_key`. We can also confirm that `request_master_key.isra.5` is the only caller to `request_trusted_key`:
-
-```
-# cat funcs.txt | ./symrel.py -t get self,jumpers,callers which call to up_read or jump to up_read
-
-                        call                                call           
-[request_trusted_key] ─<───── [request_master_key.isra.5] ──────> [up_read]
-
-# echo request_trusted_key | ./symrel.py -t GET callers or jumpers
-
-                        call                             
-[request_trusted_key] ─<───── [request_master_key.isra.5]
-```
-
-What about the other 4 symbols `c_start`, `m_start`, `s_start`,  and `sysvipc_proc_start`? It turns out these symbols are stored as function pointers which we may not be able to get from the objdump the clear call relations. But we can at least confirm the `stop` version of these symbols do call `up_read`:
-
-```
-# echo c_stop, m_stop, s_stop, sysvipc_proc_stop | ./symrel.py -t WHICH call to up_read or jump to up_read
-
-           jmp           
-[c_stop] ─────> [up_read]
-
-           jmp           
-[m_stop] ─────> [up_read]
-
-           call           
-[s_stop] ──────> [up_read]
-
-                      jmp           
-[sysvipc_proc_stop] ─────> [up_read]
-```
-
-## Example 2: finding the readers who own a rwsem in vmcore
+## Demo: finding the readers who own a rwsem in vmcore
 
 rwsem does not store information for reader-owners (at least not all of them). To find a reader-pwner from vmcore can be tricky. Normally the first approach would be to search all processes' stack frames to detect who may be referring to the rwsem. This is based on an assumption that a rwsem owner holds the rwsem address in its stack frame, which, again, may not be true.
 
