@@ -38,6 +38,7 @@ call_rwsem_down_read_failed
 ```
 
 Get all callees of `down_read` recursively with max depth = 2 (recur 2), with tracing (-t)
+(In case this could gets long as recur depth increases, redirect the output to a file and read it with vim with `:set nowrap` for better readability)
 
 ```
 # echo down_read | ./symrel.py -t get recur 2 callees 
