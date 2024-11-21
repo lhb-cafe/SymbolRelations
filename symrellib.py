@@ -4,8 +4,8 @@ import pickle
 from symrel_tracer import TraceNode, RelationTraces
 
 static_relations = {
-    'call': re.compile(r'^([0-9a-f]+):\s*e8\s[ 0-9a-f]{11}\s*(call)\s+[0-9a-f]+ <(.+?)>'),
-    'jump': re.compile(r'^([0-9a-f]+):\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)\s+[0-9a-f]+ <([^+>]*)>')
+    'call': re.compile(r'^([0-9a-fx]+):\s*e8[0-9a-f\s]+(call)q?\s+[0-9a-fx]+\s*<(.+?)>'),
+    'jump': re.compile(r'^([0-9a-fx]+):\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)q?\s+[0-9a-fx]+\s*<([^+>]*)>')
 }
 
 class Relations:
