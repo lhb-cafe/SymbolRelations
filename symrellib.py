@@ -76,11 +76,10 @@ class SymbolRelations:
         if src_sym not in self.dict:
             print(f'hit undefined symbol [{src_sym}]')
             return
+        if recur < 0: recur = -1 # negative recur means unlimited recursion
 
         recur_list = []
         for sym, inst_index_list in self.get(src_sym).peers(relation, forward).items():
-            if recur < 0: recur = -1 # negative recur means unlimited recursion
-            elif recur == 0: break
             if found.add_step(sym, src_sym, tuple(inst_index_list), forward):
                 recur_list.append(sym)
             else:
@@ -94,8 +93,9 @@ class SymbolRelations:
         # BFS
         if len(recur_list) > 0:
             found.commit()
-            for sym in recur_list:
-                self.__find_peers_recur(found, sym, relation, forward, search, recur - 1)
+            if recur > 1:
+                for sym in recur_list:
+                    self.__find_peers_recur(found, sym, relation, forward, search, recur - 1)
         else:
             # nothing added for this symbol, return before we hit an infinite loop
             return
