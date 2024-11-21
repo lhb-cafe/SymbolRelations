@@ -3,7 +3,9 @@ from symrel_tracer_verify import verify_ret_with, verify_node
 import sys, os
 
 def supports_color():
-    return sys.stdout.isatty() and os.getenv('TERM') in ['xterm', 'xterm-256color', 'screen', 'screen-256color']
+    # TODO: color is not vim-friendly
+    #return sys.stdout.isatty() and os.getenv('TERM') in ['xterm', 'xterm-256color', 'screen', 'screen-256color']
+    return False
 
 def compute_leaves(self):
     if hasattr(self, 'leaves_cnt'):
@@ -101,7 +103,7 @@ def str_helper(self, color):
                     lines.append(paddings3 + line)
                 cnt += 1
 
-    if hasattr(self, 'is_filter_trace'):
+    if color and hasattr(self, 'is_filter_trace'):
         for i in range(0, len(lines)):
             lines[i] = blue_color + lines[i] + reset_color
     return lines
