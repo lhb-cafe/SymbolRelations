@@ -2,6 +2,7 @@
 
 import sys
 from symrellib import SymbolRelations, static_relations
+from symrel_tracer_print import display_options
 
 def help(name):
     print("Usage:")
@@ -235,6 +236,11 @@ if __name__ == "__main__":
         sr.set_tracing(True); cur += 1
         if argv[cur] in ('BACKWARD', 'backward'):
             backward_tracing = True; cur += 1
+        while argv[cur] in ('--nocolor','--nooffset'):
+            if argv[cur] == '--nocolor':
+                display_options['nocolor'] = True; cur += 1
+            elif argv[cur] == '--nooffset':
+                display_options['nooffset'] = True; cur += 1
     elif argv[cur] in ('-d', '--define'):
         new_rel = argv[cur+1]; cur += 2
         sr.declare_dynamic_rel(new_rel)
