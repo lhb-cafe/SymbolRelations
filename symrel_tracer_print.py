@@ -2,7 +2,14 @@ from symrel_tracer import TraceNode, RelationTraces
 from symrel_tracer_verify import verify_ret_with, verify_node
 import sys, os
 
+display_options = {
+    'nocolor': False,
+    'nooffset': False
+}
+
 def supports_color():
+    if display_options['nocolor'] == True:
+        return False
     return sys.stdout.isatty() and os.getenv('TERM') in ['xterm', 'xterm-256color', 'screen', 'screen-256color']
 
 def compute_leaves(self):
@@ -37,16 +44,20 @@ def str_helper(self, color):
     second = sym_str
 
     if self.parent:
-        inst_str_list = []
+        inst_str_set = set()
         for inst in self.insts:
             if isinstance(self.sr.instructions[inst], tuple):
                 # inst is wrapped with offset info
                 real_ind = self.sr.instructions[inst][0]
                 offset = self.sr.instructions[inst][1]
-                inst_str_list.append(f'{self.sr.instructions[real_ind]} at +{offset}')
+                if display_options['nooffset'] == True:
+                    inst_str = self.sr.instructions[real_ind]
+                else:
+                    inst_str = f'{self.sr.instructions[real_ind]} at +{offset}'
+                inst_str_set.add(inst_str)
             else:
-                inst_str_list.append(self.sr.instructions[inst])
-        step_info = ' or '.join(inst_str_list)
+                inst_str_set.add(self.sr.instructions[inst])
+        step_info = ' or '.join(inst_str_set)
 
         step = ''.join([c*len(step_info) for c in '-'])
         if self.forward == None: step = '<' + step + '>'
@@ -101,7 +112,7 @@ def str_helper(self, color):
                     lines.append(paddings3 + line)
                 cnt += 1
 
-    if hasattr(self, 'is_filter_trace'):
+    if color and hasattr(self, 'is_filter_trace'):
         for i in range(0, len(lines)):
             lines[i] = blue_color + lines[i] + reset_color
     return lines
