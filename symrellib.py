@@ -1,18 +1,16 @@
 import sys
-import re
+import os
 import pickle
+from importlib import import_module
 from symrel_tracer import TraceNode, RelationTraces
 
-static_relations = {
-    'call': re.compile(r'^([0-9a-fx]+):\s*e8[0-9a-f\s]+(call)q?\s+[0-9a-fx]+\s*<(.+?)>'),
-    'jump': re.compile(r'^([0-9a-fx]+):\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)q?\s+[0-9a-fx]+\s*<([^+>]*)>')
-}
+static_relations = None
 
 class Relations:
     def __init__(self):
         # index 0 for incoming, 1 for outgoing
         # a peer is a dictionary whose key is the related symbol, and value is a list of unique relation instructions
-        for relation in static_relations.keys():
+        for relation in static_relations:
             setattr(self, relation, (dict(), dict()))
 
     def peers(self, relation, forward):
@@ -40,8 +38,9 @@ class SymbolRelations:
         self.instructions = list()
         self.tracing = False
         self.search_history = []
-        self.available_relations = static_relations
         self.abi_version = "v0.3"
+        self.arch = None
+        sys.path.append(os.path.abspath('./parser'))
 
     def get(self, sym):
         if sym not in self.dict:
@@ -62,7 +61,7 @@ class SymbolRelations:
     def declare_dynamic_rel(self, new_rel):
         assert new_rel not in self.instructions
         self.instructions.append(new_rel)
-        self.available_relations[new_rel] = None
+        self.available_relations.append(new_rel)
         for symrels in self.dict.values():
             setattr(symrels, new_rel, (dict(), dict()))
 
@@ -125,40 +124,29 @@ class SymbolRelations:
     def set_tracing(self, tracing):
         self.tracing = tracing
 
-    # sym_file should be in objdump format
-    def build(self, sym_file):
-        self.__init__()
-        src_sym = None
-        func_pattern = re.compile(r'^([0-9a-f]+) <(.+?)>:')
-        with open(sym_file, 'r') as file:
-            for line in file:
-                match = func_pattern.match(line)
-                if match:
-                    src_addr = match.groups()[0]
-                    src_sym = match.groups()[1]
-                    continue
-                relation = None
-                for rel, pattern in self.available_relations.items():
-                    match = pattern.match(line)
-                    if match:
-                        relation = rel
-                        break
-                if not relation:
-                    continue
-                # a match of relation is found
-                match_addr = match.groups()[0]
-                instruction = match.groups()[1]
-                dst_sym = match.groups()[2]
-                if src_sym:
-                    self.register_relation(src_sym, dst_sym, relation, instruction, int(match_addr, 16) - int(src_addr, 16))
-                else:
-                    print("Error matching relation", relation, "[None] ->", dst_sym, "without a matching caller", file=sys.stderr);
-                    exit(1)
+    def set_arch(self, arch):
+        self.arch = arch
+
+    def build(self, filepath):
+        assert self.arch != None
+        with open(filepath, 'rb') as file:
+            magic = file.read(4)
+            if magic == b'\x7f\x45\x4c\x46':
+                arch_parser = import_module(f'{self.arch}_elf')
+            else:
+                print('not ELF file, assuming objdump format...')
+                arch_parser = import_module(f'{self.arch}_objdump')
+
+        self.available_relations = arch_parser.relations
+        global static_relations
+        static_relations = self.available_relations
+        return arch_parser.parse(self, filepath)
 
     def build_cache(self, symbols = None, trace_only = False):
         return RelationTraces(self, symbols, trace_only, tracing = self.tracing)
 
     def save(self, sr_file):
+        self.build = None
         with open(sr_file, 'wb') as file:
             pickle.dump(self, file)
 
