@@ -150,7 +150,7 @@ class RelationTraces():
         # create the new node and handle tracing
         new = TraceNode(dst_sym, inst_tuple, forward, sr = self.sr)
         for src_node in self.leaves[src_sym]:
-            RelationTraces.merge_leaves(self.staged_leaves, src_node.add_leaf(copy.copy(new)))
+            RelationTraces.merge_leaves(self.staged_leaves, src_node.add_leaf(copy.deepcopy(new)))
         return True
 
     # we should have copied the objects from other, but in our uses cases it doesn't really matter

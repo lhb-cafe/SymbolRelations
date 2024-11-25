@@ -41,6 +41,13 @@ def verify_node(self):
         if self.insts == None or self.forward == None:
             print("Missing insts or forward\n")
             return False
+        if not self.parent.leaves[(self.symbol, self.forward)] is self:
+            print("parent does not have reference to self\n")
+            return False
+    for leaf in self.leaves.values():
+        if not leaf.parent is self:
+            print(f'leaf {leaf} does not have self as parent\n')
+            return False
     return True
 
 # check if all leaves of node fall into leaves (second arg)
