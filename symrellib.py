@@ -1,12 +1,10 @@
 import sys
-import re
 import pickle
+from importlib import import_module
+from types import MethodType
 from symrel_tracer import TraceNode, RelationTraces
 
-static_relations = {
-    'call': re.compile(r'^([0-9a-fx]+):\s*e8[0-9a-f\s]+(call)q?\s+[0-9a-fx]+\s*<(.+?)>'),
-    'jump': re.compile(r'^([0-9a-fx]+):\s*[0-9a-f\s]+(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)q?\s+[0-9a-fx]+\s*<([^+>]*)>')
-}
+static_relations = None
 
 class Relations:
     def __init__(self):
@@ -40,8 +38,8 @@ class SymbolRelations:
         self.instructions = list()
         self.tracing = False
         self.search_history = []
-        self.available_relations = static_relations
         self.abi_version = "v0.3"
+        self.build = None
 
     def get(self, sym):
         if sym not in self.dict:
@@ -125,35 +123,12 @@ class SymbolRelations:
     def set_tracing(self, tracing):
         self.tracing = tracing
 
-    # sym_file should be in objdump format
-    def build(self, sym_file):
-        self.__init__()
-        src_sym = None
-        func_pattern = re.compile(r'^([0-9a-f]+) <(.+?)>:')
-        with open(sym_file, 'r') as file:
-            for line in file:
-                match = func_pattern.match(line)
-                if match:
-                    src_addr = match.groups()[0]
-                    src_sym = match.groups()[1]
-                    continue
-                relation = None
-                for rel, pattern in self.available_relations.items():
-                    match = pattern.match(line)
-                    if match:
-                        relation = rel
-                        break
-                if not relation:
-                    continue
-                # a match of relation is found
-                match_addr = match.groups()[0]
-                instruction = match.groups()[1]
-                dst_sym = match.groups()[2]
-                if src_sym:
-                    self.register_relation(src_sym, dst_sym, relation, instruction, int(match_addr, 16) - int(src_addr, 16))
-                else:
-                    print("Error matching relation", relation, "[None] ->", dst_sym, "without a matching caller", file=sys.stderr);
-                    exit(1)
+    def set_arch(self, arch):
+        parser = import_module(f'{arch}_parser')
+        global static_relations
+        static_relations = parser.relations # getattr(parser, 'relations')
+        self.available_relations = static_relations
+        self.build = MethodType(parser.parse, self)
 
     def build_cache(self, symbols = None, trace_only = False):
         return RelationTraces(self, symbols, trace_only, tracing = self.tracing)

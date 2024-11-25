@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-from symrellib import SymbolRelations, static_relations
+from symrellib import SymbolRelations
 from symrel_tracer_print import display_options
 
 def help(name):
@@ -20,8 +20,6 @@ def help(name):
     print("    WHICH [NOT] [RECUR n] <{relation} to|from {symbol}> [<OR|AND> [NOT] [RECUR n] <...> [...]]")
     if sr:
         print("Available relations:", list(sr.available_relations.keys()))
-    else:
-        print("Available relations:", list(static_relations.keys()))
     print("\nExamples:")
     print("Get all symbols from the relation data:")
     print("    symrel.py FROM ALL GET SELF")
@@ -225,9 +223,15 @@ if __name__ == "__main__":
 
     # handle 'build' and 'help'
     if argv[cur] in ('-b','--build'):
+        if argv[cur+1].startswith('--'):
+            arch = argv[cur+1][2:]; cur += 1
+        else:
+            print('No architecure specified, default to x86')
+            arch = 'x86'
+        sr.set_arch(arch)
         sr.build(argv[cur+1])
         sr.save(sr_file)
-        print("Done."); exit(0)
+        print(f'Data saved to {sr_file}.\nDone'); exit(0)
     elif argv[cur] in ('-h','--help'):
         help(argv[0]); exit(0)
 
