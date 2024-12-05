@@ -1,21 +1,26 @@
 from elftools.elf.elffile import ELFFile
-from capstone import Cs, CS_ARCH_X86, CS_MODE_32, CS_MODE_64
-import re
+from capstone import Cs, x86, CS_ARCH_X86, CS_MODE_32, CS_MODE_64
+import struct
 
-relations_re = {
-    'call': re.compile(r'(call)q?'),
-    'jump': re.compile(r'(jmp|ja|jae|jb|jbe|jl|jle|jg|jge|jc|jnc|jo|jno|js|jns|jz|jnz)q?')
-}
-relations = list(relations_re.keys())
+relations = ['call', 'jump']
 
 elf = None
 
 max_inst_size = 15 # x86 spec
 md = None
-addr_pattern = None
+addr_bytes = None
 addr_to_symbol = dict()
 is_linux = False
 linux_version = None
+
+
+# the value of the dictionary must be sets
+def dict_set_add(d, key, val):
+    if key in d.keys():
+        d[key].add(val)
+    else:
+        d[key] = {val}
+
 
 def check_linux():
     rodata = elf.get_section_by_name('.rodata')
@@ -38,51 +43,60 @@ def check_linux():
         print("ELF will be parsed as a Linux kernel image")
     return
 
+
 def parse_inst(sr, inst, symbol):
-    for rel, pattern in relations_re.items():
-        op_match = pattern.match(inst.mnemonic)
-        if op_match:
-            addr_match = addr_pattern.match(inst.op_str)
-            if addr_match:
-                dst_addr = int(addr_match.groups()[0], 16)
-                if dst_addr in addr_to_symbol.keys():
-                    dst_symbol = addr_to_symbol[dst_addr]
-                    sr.register_relation(symbol.name, dst_symbol, rel, op_match.groups()[0], inst.address - symbol['st_value'])
-                    #print(f"registered relation {symbol.name} {op_match.groups()[0]} {dst_symbol}")
+    if inst.mnemonic.startswith('j'):
+        rel = 'jump';
+    elif inst.mnemonic.startswith('call'):
+        rel = 'call'
+    else:
+        return
+
+    offset = inst.address - symbol['st_value']
+    o = inst.operands[0]
+
+    # e.g.,  "call 0xffffffff8175d000"
+    if o.type == x86.X86_OP_IMM:
+        va = int(inst.op_str, 16) # TODO: maybe we should calculate from inst.operands[0].imm for performance
+        if va in addr_to_symbol.keys():
+            drt_targets = addr_to_symbol[va] # one addr can correspond to multiple symbols
+            for tgt in drt_targets:
+                sr.register_relation(symbol.name, tgt, rel, inst.mnemonic, offset)
+
 
 def parse_sym(sr, symbol, size, text_section, md):
     sym_addr = symbol['st_value']
-    #print(f'{sym_addr:08x} <{symbol.name}>:')
     processed = 0
     offset = symbol['st_value'] - text_section['sh_addr']
     code_section = text_section.data()[offset : offset + size + max_inst_size - 1]
     for inst in md.disasm(code_section, symbol['st_value']):
         parse_inst(sr, inst, symbol)
-        #print(f"{inst.address:08x}:\t{inst.bytes.hex()} \t{inst.mnemonic}\t{inst.op_str}")
         processed += inst.size
         if processed >= size:
             break
     return processed
 
+
 def parse(sr, elf_file):
     global md
-    global addr_pattern
     global addr_to_symbol
     global elf
+    global mapped_sections
+    global addr_bytes
     with open(elf_file, 'rb') as f:
         elf = ELFFile(f)
         arch = elf.header['e_machine']
         if arch == 'EM_X86_32':
             md = Cs(CS_ARCH_X86, CS_MODE_32)
-            addr_pattern = re.compile(r'0x([0-9a-f]{8})')
+            addr_bytes = 4
         elif arch == 'EM_X86_64':
             md = Cs(CS_ARCH_X86, CS_MODE_64)
-            addr_pattern = re.compile(r'0x([0-9a-f]{16})')
+            addr_bytes = 8
         else:
             print(f"ELF file not for x86, detected code {elf.header['e_machine']}")
             return 1
+        md.detail = True
         check_linux()
-
 
         text = elf.get_section_by_name('.text')
         if text is None:
@@ -90,15 +104,15 @@ def parse(sr, elf_file):
             return 1
         symtab = elf.get_section_by_name('.symtab')
         if symtab is None:
-            print("No '.text' section found in the ELF file.")
-            return 1
+            print("No '.symtab' section found in the ELF file.")
+            return
 
         print("Parsing .symtab ...")
         sym_in_text = []
         for symbol in symtab.iter_symbols():
             if text['sh_addr'] <= symbol['st_value'] < text['sh_addr'] + text['sh_size']:
                 sym_in_text.append(symbol)
-                addr_to_symbol[symbol['st_value']] = symbol.name
+                dict_set_add(addr_to_symbol, symbol['st_value'], symbol.name)
         sym_in_text = sorted(sym_in_text, key = lambda sym: sym['st_value'])
         sym_cnt = len(sym_in_text)
         print(f'Found {sym_cnt} symbols in .text section.')
